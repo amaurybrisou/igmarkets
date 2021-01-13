@@ -351,17 +351,20 @@ type OAuthToken struct {
 	TokenType    string `json:"token_type"`
 }
 
+// MarketPrice - Epic Price from IG Markets
+type MarketPrice struct {
+	SnapshotTime     string `json:"snapshotTime"`
+	SnapshotTimeUTC  string `json:"snapshotTimeUTC"`
+	OpenPrice        Price  `json:"openPrice"`
+	LowPrice         Price  `json:"lowPrice"`
+	HighPrice        Price  `json:"highPrice"`
+	ClosePrice       Price  `json:"closePrice"`
+	LastTradedVolume int    `json:"lastTradedVolume"`
+}
+
 // PriceResponse - Response for price query
 type PriceResponse struct {
-	Prices []struct {
-		SnapshotTime     string `json:"snapshotTime"`
-		SnapshotTimeUTC  string `json:"snapshotTimeUTC"`
-		OpenPrice        Price  `json:"openPrice"`
-		LowPrice         Price  `json:"lowPrice"`
-		HighPrice        Price  `json:"highPrice"`
-		ClosePrice       Price  `json:"closePrice"`
-		LastTradedVolume int    `json:"lastTradedVolume"`
-	}
+	Prices         []MarketPrice
 	InstrumentType string   `json:"instrumentType"`
 	MetaData       struct{} `json:"-"`
 }
