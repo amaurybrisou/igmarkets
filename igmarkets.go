@@ -387,6 +387,12 @@ const (
 	ResolutionSecond = "SECOND"
 	// ResolutionMinute - 1 minute price snapshot
 	ResolutionMinute = "MINUTE"
+	// ResolutionMinute - 5 minute price snapshot
+	ResolutionFiveMinute = "MINUTE_5"
+	// ResolutionMinute - 15 minute price snapshot
+	ResolutionFifteenMinute = "MINUTE_15"
+	// ResolutionMinute - 30 minute price snapshot
+	ResolutionThirtyMinute = "MINUTE_30"
 	// ResolutionHour - 1 hour price snapshot
 	ResolutionHour = "HOUR"
 	// ResolutionTwoHour - 2 hour price snapshot
