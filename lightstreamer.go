@@ -15,16 +15,16 @@ import (
 type LightStreamerTick struct {
 	Epic       string
 	Time       time.Time
-	PriceOpen  float64
-	PriceHigh  float64
-	PriceLow   float64
-	PriceClose float64
+	OpenPrice  float64
+	MaxPrice   float64
+	MinPrice   float64
+	ClosePrice float64
 }
 
 // GetOTCWorkingOrders - Get all working orders
 // epic: e.g. CS.D.BITCOIN.CFD.IP
 // tickReceiver: receives all ticks from lightstreamer API
-func (ig *IGMarkets) OpenLightStreamerSubscription(epics []string, subType, tick, mode string, tickReceiver chan LightStreamerTick) error {
+func (ig *IGMarkets) OpenLightStreamerSubscription(epics, fields []string, subType, tick, mode string, tickReceiver chan LightStreamerTick) error {
 	const contentType = "application/x-www-form-urlencoded"
 
 	// Obtain CST and XST tokens first
@@ -71,11 +71,12 @@ func (ig *IGMarkets) OpenLightStreamerSubscription(epics []string, subType, tick
 	// Adding subscription for epic
 	var epicList string
 	for i := range epics {
-		epicList = epicList + subType + ":" + epics[i] + "+:" + tick + "+"
+		epicList = epicList + subType + ":" + epics[i] + ":" + tick + "+"
 	}
+
 	body = []byte("LS_session=" + sessionID +
 		"&LS_polling=true&LS_polling_millis=0&LS_idle_millis=0&LS_op=add&LS_Table=1&LS_id=" +
-		epicList + "&LS_schema=UPDATE_TIME+BID+OFFER+MARKET_STATE&LS_mode=" + mode)
+		epicList + "&LS_schema=" + strings.Join(fields[:], "+") + "&LS_mode=" + mode)
 	bodyBuf = bytes.NewBuffer(body)
 	url = fmt.Sprintf("%s/lightstreamer/control.txt", sessionVersion2.LightstreamerEndpoint)
 	resp, err = c.Post(url, contentType, bodyBuf)
@@ -113,11 +114,11 @@ func (ig *IGMarkets) OpenLightStreamerSubscription(epics []string, subType, tick
 		}
 		return fmt.Errorf("calling lightstreamer endpoint %q failed: %v", url, err)
 	}
-	go readLightStreamSubscription(epics, tickReceiver, resp)
+	go readLightStreamSubscription(epics, fields, tickReceiver, resp)
 	return nil
 }
 
-func readLightStreamSubscription(epics []string, tickReceiver chan LightStreamerTick, resp *http.Response) {
+func readLightStreamSubscription(epics, fields []string, tickReceiver chan LightStreamerTick, resp *http.Response) {
 	const epicNameUnknown = "unkown"
 	var respBuf = make([]byte, 64)
 	var lastTicks = make(map[string]LightStreamerTick, len(epics)) // epic -> tick
@@ -149,17 +150,23 @@ func readLightStreamSubscription(epics []string, tickReceiver chan LightStreamer
 			break
 		}
 
-		if len(priceParts) != 5 {
+		if len(priceParts) != len(fields)+1 {
 			//fmt.Printf("Malformed price message: %q\n", priceMsg)
 			continue
 		}
 
-		var parsedTime time.Time
+		var parsedDate time.Time
 		if priceParts[1] != "" {
 			priceTime := priceParts[1]
 			now := time.Now().UTC()
-			parsedTime, err = time.ParseInLocation("2006-1-2 15:04:05", fmt.Sprintf("%d-%d-%d %s",
-				now.Year(), now.Month(), now.Day(), priceTime), time.UTC)
+			i, err := strconv.ParseInt(priceTime, 10, 64)
+			if err != nil {
+				panic(err)
+			}
+			parsedTime := time.Unix(0, time.Now().Unix()+i*int64(time.Millisecond))
+
+			parsedDate, err = time.ParseInLocation("2006-1-2 15:04:05", fmt.Sprintf("%d-%d-%d %s",
+				now.Year(), now.Month(), now.Day(), parsedTime.Format("15:04:05")), time.UTC)
 			if err != nil {
 				fmt.Printf("parsing time failed: %v time=%q\n", err, priceTime)
 				continue
@@ -169,7 +176,7 @@ func readLightStreamSubscription(epics []string, tickReceiver chan LightStreamer
 		priceOpen, _ := strconv.ParseFloat(priceParts[2], 64)
 		priceHigh, _ := strconv.ParseFloat(priceParts[3], 64)
 		priceLow, _ := strconv.ParseFloat(priceParts[4], 64)
-		priceClose, _ := strconv.ParseFloat(priceParts[5], 64)
+		priceClose, err := strconv.ParseFloat(strings.Trim(priceParts[5], "\r\n"), 64)
 
 		epic, found := epicIndex[tableIndex]
 		if !found {
@@ -180,30 +187,30 @@ func readLightStreamSubscription(epics []string, tickReceiver chan LightStreamer
 			var lastTick, found = lastTicks[epic]
 			if found {
 				if priceHigh == 0 {
-					priceHigh = lastTick.PriceHigh
+					priceHigh = lastTick.MaxPrice
 				}
 				if priceOpen == 0 {
-					priceOpen = lastTick.PriceOpen
+					priceOpen = lastTick.OpenPrice
 				}
 				if priceLow == 0 {
-					priceLow = lastTick.PriceLow
+					priceLow = lastTick.MinPrice
 				}
 				if priceClose == 0 {
-					priceClose = lastTick.PriceClose
+					priceClose = lastTick.ClosePrice
 				}
-				if parsedTime.IsZero() {
-					parsedTime = lastTick.Time
+				if parsedDate.IsZero() {
+					parsedDate = lastTick.Time
 				}
 			}
 		}
 
 		tick := LightStreamerTick{
 			Epic:       epic,
-			Time:       parsedTime,
-			PriceOpen:  priceOpen,
-			PriceHigh:  priceHigh,
-			PriceLow:   priceLow,
-			PriceClose: priceClose,
+			Time:       parsedDate,
+			OpenPrice:  priceOpen,
+			MaxPrice:   priceHigh,
+			MinPrice:   priceLow,
+			ClosePrice: priceClose,
 		}
 		tickReceiver <- tick
 		lastTicks[epic] = tick
