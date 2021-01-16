@@ -165,7 +165,7 @@ func readLightStreamSubscription(epics, fields []string, tickReceiver chan Light
 			}
 			parsedTime := time.Unix(0, time.Now().Unix()+i*int64(time.Millisecond))
 
-			parsedDate, err = time.ParseInLocation("2006-1-2 15:04:05", fmt.Sprintf("%d-%d-%d %s",
+			parsedDate, err = time.Parse("2006-1-2 15:04:05", fmt.Sprintf("%d-%d-%d %s",
 				now.Year(), now.Month(), now.Day(), parsedTime.Format("15:04:05")), time.UTC)
 			if err != nil {
 				fmt.Printf("parsing time failed: %v time=%q\n", err, priceTime)
