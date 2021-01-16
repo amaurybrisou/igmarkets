@@ -1,19 +1,20 @@
 package main
 
 import (
-	"github.com/sklinkert/igmarkets"
+	"time"
+
+	"github.com/amaurybrisou/igmarkets"
 	"github.com/lfritz/env"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
 
 var conf struct {
-	igAPIURL               string
-	igIdentifier           string
-	igAPIKey               string
-	igPassword             string
-	igAccountID            string
-	instrument             string
+	igAPIURL     string
+	igIdentifier string
+	igAPIKey     string
+	igPassword   string
+	igAccountID  string
+	instrument   string
 }
 
 func main() {
@@ -36,7 +37,13 @@ func main() {
 		}
 
 		tickChan := make(chan igmarkets.LightStreamerTick)
-		err := igHandle.OpenLightStreamerSubscription([]string{"CS.D.EURUSD.MINI.IP", "CS.D.BITCOIN.CFD.IP"}, tickChan)
+		err := igHandle.OpenLightStreamerSubscription([]string{"CS.D.ETHUSD.CFD.IP"}, []string{
+			"UTM",
+			"OFR_OPEN",
+			"OFR_HIGH",
+			"OFR_LOW",
+			"OFR_CLOSE",
+		}, "CHART", "1MINUTE", "MERGE", tickChan)
 		if err != nil {
 			log.WithError(err).Error("open stream fialed")
 		}
