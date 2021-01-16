@@ -22,7 +22,7 @@ type LightStreamerTick struct {
 // GetOTCWorkingOrders - Get all working orders
 // epic: e.g. CS.D.BITCOIN.CFD.IP
 // tickReceiver: receives all ticks from lightstreamer API
-func (ig *IGMarkets) OpenLightStreamerSubscription(epics []string, tickReceiver chan LightStreamerTick) error {
+func (ig *IGMarkets) OpenLightStreamerSubscription(epics []string, subType, tick, mode string, tickReceiver chan LightStreamerTick) error {
 	const contentType = "application/x-www-form-urlencoded"
 
 	// Obtain CST and XST tokens first
@@ -69,11 +69,11 @@ func (ig *IGMarkets) OpenLightStreamerSubscription(epics []string, tickReceiver 
 	// Adding subscription for epic
 	var epicList string
 	for i := range epics {
-		epicList = epicList + "MARKET:" + epics[i] + "+"
+		epicList = epicList + subType + ":" + epics[i] + "+:" + tick + "+"
 	}
 	body = []byte("LS_session=" + sessionID +
 		"&LS_polling=true&LS_polling_millis=0&LS_idle_millis=0&LS_op=add&LS_Table=1&LS_id=" +
-		epicList + "&LS_schema=UPDATE_TIME+BID+OFFER+MARKET_STATE&LS_mode=MERGE")
+		epicList + "&LS_schema=UPDATE_TIME+BID+OFFER+MARKET_STATE&LS_mode=" + mode)
 	bodyBuf = bytes.NewBuffer(body)
 	url = fmt.Sprintf("%s/lightstreamer/control.txt", sessionVersion2.LightstreamerEndpoint)
 	resp, err = c.Post(url, contentType, bodyBuf)
