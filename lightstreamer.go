@@ -13,10 +13,12 @@ import (
 )
 
 type LightStreamerTick struct {
-	Epic string
-	Time time.Time
-	Bid  float64
-	Ask  float64
+	Epic       string
+	Time       time.Time
+	PriceOpen  float64
+	PriceHigh  float64
+	PriceLow   float64
+	PriceClose float64
 }
 
 // GetOTCWorkingOrders - Get all working orders
@@ -164,8 +166,10 @@ func readLightStreamSubscription(epics []string, tickReceiver chan LightStreamer
 			}
 		}
 		tableIndex := priceParts[0]
-		priceBid, _ := strconv.ParseFloat(priceParts[2], 64)
-		priceAsk, _ := strconv.ParseFloat(priceParts[3], 64)
+		priceOpen, _ := strconv.ParseFloat(priceParts[2], 64)
+		priceHigh, _ := strconv.ParseFloat(priceParts[3], 64)
+		priceLow, _ := strconv.ParseFloat(priceParts[4], 64)
+		priceClose, _ := strconv.ParseFloat(priceParts[5], 64)
 
 		epic, found := epicIndex[tableIndex]
 		if !found {
@@ -175,11 +179,17 @@ func readLightStreamSubscription(epics []string, tickReceiver chan LightStreamer
 		if epic != epicNameUnknown {
 			var lastTick, found = lastTicks[epic]
 			if found {
-				if priceAsk == 0 {
-					priceAsk = lastTick.Ask
+				if priceHigh == 0 {
+					priceHigh = lastTick.PriceHigh
 				}
-				if priceBid == 0 {
-					priceBid = lastTick.Bid
+				if priceOpen == 0 {
+					priceOpen = lastTick.PriceOpen
+				}
+				if priceLow == 0 {
+					priceLow = lastTick.PriceLow
+				}
+				if priceClose == 0 {
+					priceClose = lastTick.PriceClose
 				}
 				if parsedTime.IsZero() {
 					parsedTime = lastTick.Time
@@ -188,10 +198,12 @@ func readLightStreamSubscription(epics []string, tickReceiver chan LightStreamer
 		}
 
 		tick := LightStreamerTick{
-			Epic: epic,
-			Time: parsedTime,
-			Bid:  priceBid,
-			Ask:  priceAsk,
+			Epic:       epic,
+			Time:       parsedTime,
+			PriceOpen:  priceOpen,
+			PriceHigh:  priceHigh,
+			PriceLow:   priceLow,
+			PriceClose: priceClose,
 		}
 		tickReceiver <- tick
 		lastTicks[epic] = tick
