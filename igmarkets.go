@@ -227,6 +227,7 @@ type OTCDealConfirmation struct {
 	TrailingStopIncrement float64        `json:"trailingIncrement"`
 	GuaranteedStop        bool           `json:"guaranteedStop"`
 	DealReference         string         `json:"dealReference,omitempty"`
+	DealID                string         `json:"dealId,omitempty"`
 }
 
 // DealingRules - Part of MarketsResponse
