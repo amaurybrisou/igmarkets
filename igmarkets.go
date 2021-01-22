@@ -685,6 +685,24 @@ func (ig *IGMarkets) GetPositions() (*PositionsResponse, error) {
 	return igResponse, nil
 }
 
+// GetPosition - Get the open position by reference
+func (ig *IGMarkets) GetPosition(dealRef string) (*Position, error) {
+	bodyReq := new(bytes.Buffer)
+
+	req, err := http.NewRequest("GET", ig.APIURL+"/gateway/deal/positions/"+dealRef, bodyReq)
+	if err != nil {
+		return nil, fmt.Errorf("igmarkets: unable to create HTTP request: %v", err)
+	}
+
+	igResponseInterface, err := ig.doRequest(req, 2, Position{})
+	if err != nil {
+		return nil, err
+	}
+
+	igResponse, _ := igResponseInterface.(*Position)
+	return igResponse, nil
+}
+
 // DeletePositionsOTC - Closes one or more OTC positions
 func (ig *IGMarkets) DeletePositionsOTC() error {
 	bodyReq := new(bytes.Buffer)
