@@ -48,12 +48,12 @@ func (ig *IGMarkets) CloseLightStreamerSubscription() error {
 		return fmt.Errorf("calling lightstreamer endpoint %q failed: %v", url, err)
 	}
 	body, err = ioutil.ReadAll(resp.Body)
-	// sessionMsg := string(respBody[:])
-	// if !strings.HasPrefix(sessionMsg, "OK") {
-	// 	return fmt.Errorf("unexpected control.txt response: %q", body)
-	// }
+	if err != nil {
+		return err
+	}
 
-	fmt.Printf("Unsubscription success to %v, %s", err, string(body))
+	fmt.Printf("Unsubscription success to %s", string(body))
+
 	return nil
 
 }
