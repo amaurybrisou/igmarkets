@@ -31,7 +31,7 @@ func (ig *IGMarkets) CloseLightStreamerSubscription() error {
 	}
 	c := &http.Client{Transport: tr}
 
-	body := []byte("LS_table=1&LS_op=destroy&LS_session=" + ig.SessionID)
+	body := []byte("LS_op2=destroy&LS_session=" + ig.SessionID)
 	bodyBuf := bytes.NewBuffer(body)
 	url := fmt.Sprintf("%s/lightstreamer/control.txt", ig.SessionVersion2.LightstreamerEndpoint)
 	resp, err := c.Post(url, contentType, bodyBuf)
@@ -52,11 +52,11 @@ func (ig *IGMarkets) CloseLightStreamerSubscription() error {
 		return err
 	}
 
-	if string(body) == "SYNC ERROR" {
-		return fmt.Errorf("SYNC ERROR")
+	if strings.Contains(string(body), "SYNC ERROR") {
+		return fmt.Errorf(string(body))
 	}
 
-	fmt.Printf("Unsubscription success to %s", string(body))
+	fmt.Print("unsubscription success")
 
 	return nil
 
