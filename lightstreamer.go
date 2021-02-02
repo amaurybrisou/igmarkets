@@ -52,6 +52,10 @@ func (ig *IGMarkets) CloseLightStreamerSubscription() error {
 		return err
 	}
 
+	if body == "SYNC ERROR" {
+		return fmt.Errorf("SYNC ERROR")
+	}
+
 	fmt.Printf("Unsubscription success to %s", string(body))
 
 	return nil
