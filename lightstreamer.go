@@ -22,6 +22,7 @@ type LightStreamerTick struct {
 }
 
 func (ig *IGMarkets) CloseLightStreamerSubscription() error {
+
 	const contentType = "application/x-www-form-urlencoded"
 
 	tr := &http.Transport{
@@ -31,7 +32,7 @@ func (ig *IGMarkets) CloseLightStreamerSubscription() error {
 	}
 	c := &http.Client{Transport: tr}
 
-	body := []byte("LS_op2=destroy&LS_session=" + ig.SessionID)
+	body := []byte(fmt.Sprintf("LS_session=%s&LS_op=destroy", strings.Trim(ig.SessionID, " ")))
 	bodyBuf := bytes.NewBuffer(body)
 	url := fmt.Sprintf("%s/lightstreamer/control.txt", ig.SessionVersion2.LightstreamerEndpoint)
 	resp, err := c.Post(url, contentType, bodyBuf)
@@ -47,16 +48,20 @@ func (ig *IGMarkets) CloseLightStreamerSubscription() error {
 		}
 		return fmt.Errorf("calling lightstreamer endpoint %q failed: %v", url, err)
 	}
-	body, err = ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+
+	bodyResp, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
 
-	if strings.Contains(string(body), "SYNC ERROR") {
-		return fmt.Errorf(string(body))
+	sessionMsg := strings.Trim(string(bodyResp[:]), "\n")
+
+	if !strings.HasPrefix(string(sessionMsg), "OK") {
+		return fmt.Errorf("unexpected response from lightstreamer session endpoint %q: %q", url, string(sessionMsg))
 	}
 
-	fmt.Print("unsubscription success")
+	fmt.Printf("unsubscription : %s\n", sessionMsg)
 
 	return nil
 
@@ -111,6 +116,14 @@ func (ig *IGMarkets) OpenLightStreamerSubscription(epics, fields []string, subTy
 	sessionID := sessionParts[1]
 	sessionID = strings.ReplaceAll(sessionID, "SessionId:", "")
 	ig.SessionID = sessionID
+
+	if len(sessionParts) > 2 {
+		controlAddr := sessionParts[2]
+		controlAddr = strings.ReplaceAll(controlAddr, "ControlAddress:", "")
+		if controlAddr != "" {
+			ig.SessionVersion2.LightstreamerEndpoint = "https://" + controlAddr
+		}
+	}
 
 	// Adding subscription for epic
 	var epicList string
