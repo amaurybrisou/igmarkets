@@ -21,6 +21,43 @@ type LightStreamerTick struct {
 	ClosePrice float64
 }
 
+func (ig *IGMarkets) CloseLightStreamerSubscription() error {
+	const contentType = "application/x-www-form-urlencoded"
+
+	tr := &http.Transport{
+		MaxIdleConns:       1,
+		IdleConnTimeout:    30 * time.Second,
+		DisableCompression: true,
+	}
+	c := &http.Client{Transport: tr}
+
+	body := []byte("LS_table=1&LS_op=destroy&LS_session=" + ig.SessionID)
+	bodyBuf := bytes.NewBuffer(body)
+	url := fmt.Sprintf("%s/lightstreamer/control.txt", ig.SessionVersion2.LightstreamerEndpoint)
+	resp, err := c.Post(url, contentType, bodyBuf)
+	if err != nil {
+		if resp != nil {
+			body, err2 := ioutil.ReadAll(resp.Body)
+			if err2 != nil {
+				return fmt.Errorf("calling lightstreamer endpoint %s failed: %v; reading HTTP body also failed: %v",
+					url, err, err2)
+			}
+			return fmt.Errorf("calling lightstreamer endpoint %q failed: %v http.StatusCode:%d Body: %q",
+				url, err, resp.StatusCode, string(body))
+		}
+		return fmt.Errorf("calling lightstreamer endpoint %q failed: %v", url, err)
+	}
+	body, err = ioutil.ReadAll(resp.Body)
+	// sessionMsg := string(respBody[:])
+	// if !strings.HasPrefix(sessionMsg, "OK") {
+	// 	return fmt.Errorf("unexpected control.txt response: %q", body)
+	// }
+
+	fmt.Printf("Unsubscription success to %v, %s", err, string(body))
+	return nil
+
+}
+
 // GetOTCWorkingOrders - Get all working orders
 // epic: e.g. CS.D.BITCOIN.CFD.IP
 // tickReceiver: receives all ticks from lightstreamer API
@@ -32,6 +69,8 @@ func (ig *IGMarkets) OpenLightStreamerSubscription(epics, fields []string, subTy
 	if err != nil {
 		return fmt.Errorf("ig.LoginVersion2() failed: %v", err)
 	}
+
+	ig.SessionVersion2 = *sessionVersion2
 
 	tr := &http.Transport{
 		MaxIdleConns:       1,
@@ -67,6 +106,7 @@ func (ig *IGMarkets) OpenLightStreamerSubscription(epics, fields []string, subTy
 	sessionParts := strings.Split(sessionMsg, "\r\n")
 	sessionID := sessionParts[1]
 	sessionID = strings.ReplaceAll(sessionID, "SessionId:", "")
+	ig.SessionID = sessionID
 
 	// Adding subscription for epic
 	var epicList string

@@ -417,13 +417,15 @@ const (
 
 // IGMarkets - Object with all information we need to access IG REST API
 type IGMarkets struct {
-	APIURL     string
-	APIKey     string
-	AccountID  string
-	Identifier string
-	Password   string
-	OAuthToken OAuthToken
-	httpClient *http.Client
+	APIURL          string
+	APIKey          string
+	AccountID       string
+	Identifier      string
+	Password        string
+	OAuthToken      OAuthToken
+	SessionVersion2 SessionVersion2
+	SessionID       string
+	httpClient      *http.Client
 	sync.RWMutex
 }
 
