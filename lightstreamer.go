@@ -52,7 +52,7 @@ func (ig *IGMarkets) CloseLightStreamerSubscription() error {
 		return err
 	}
 
-	if body == "SYNC ERROR" {
+	if string(body) == "SYNC ERROR" {
 		return fmt.Errorf("SYNC ERROR")
 	}
 
