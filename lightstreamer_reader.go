@@ -11,7 +11,7 @@ import (
 
 func readLightStreamSubscription(epics, fields []string, tickReceiver chan LightStreamChartTick, resp *http.Response) {
 	var respBuf = make([]byte, 64)
-	var lastTicks = make(map[string]*LightStreamChartTick, len(epics)) // epic -> tick
+	var lastTicks = make(map[string]LightStreamChartTick, len(epics)) // epic -> tick
 
 	defer close(tickReceiver)
 
@@ -53,16 +53,14 @@ func readLightStreamSubscription(epics, fields []string, tickReceiver chan Light
 
 		tick, err := NewLightStreamChartTick(epic, fields, priceParts[1:])
 
-		if lastTicks[epic] != nil {
-			tick.Merge(lastTicks[epic])
-		}
+		tick.Merge(lastTicks[epic])
 
 		if err != nil {
 			fmt.Printf("lighstream could not parse tick %v", err)
 			continue
 		}
 
-		tickReceiver <- *tick
+		tickReceiver <- tick
 		lastTicks[epic] = tick
 	}
 }

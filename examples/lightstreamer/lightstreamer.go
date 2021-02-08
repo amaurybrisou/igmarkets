@@ -60,7 +60,7 @@ func main() {
 
 	log.Infof("Server closed stream, restarting...")
 
-	<-time.After(20 * time.Second)
+	<-time.After(50 * time.Second)
 
 	// log.Info("sending stop")
 	// stop <- true

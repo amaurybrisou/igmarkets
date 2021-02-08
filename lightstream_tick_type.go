@@ -35,7 +35,7 @@ type LightStreamChartTick struct {
 	CONS_TICK_COUNT  float64    `json:"CONS_TICK_COUNT,omitempty"`  //Number of ticks in candle
 }
 
-func (dest *LightStreamChartTick) Merge(src *LightStreamChartTick) {
+func (dest *LightStreamChartTick) Merge(src LightStreamChartTick) {
 	if dest.LTV == 0 && src.LTV != 0 {
 		(*dest).LTV = src.LTV
 	}
@@ -104,9 +104,9 @@ func (dest *LightStreamChartTick) Merge(src *LightStreamChartTick) {
 	}
 }
 
-func NewLightStreamChartTick(epic string, fields []string, values []string) (*LightStreamChartTick, error) {
+func NewLightStreamChartTick(epic string, fields []string, values []string) (tick LightStreamChartTick, err error) {
 	if len(fields) != len(values) {
-		return nil, fmt.Errorf("not enough values for fields number")
+		return tick, fmt.Errorf("not enough values for fields number")
 	}
 	reflectType := reflect.TypeOf(LightStreamChartTick{})
 
@@ -123,19 +123,19 @@ func NewLightStreamChartTick(epic string, fields []string, values []string) (*Li
 			case reflect.Float64:
 				v, err := strconv.ParseFloat(value, 64)
 				if err != nil {
-					return nil, err
+					return tick, err
 				}
 				sliceToUnmarshal[fields[i]] = v
 			case reflect.Int, reflect.Int16, reflect.Int32, reflect.Int64:
 				v, err := strconv.ParseInt(value, 10, 64)
 				if err != nil {
-					return nil, err
+					return tick, err
 				}
 				sliceToUnmarshal[fields[i]] = v
 			case reflect.TypeOf(&time.Time{}).Kind():
 				v, err := strconv.ParseInt(value, 10, 64)
 				if err != nil {
-					return nil, err
+					return tick, err
 				}
 				sliceToUnmarshal[fields[i]] = time.Unix(0, v*int64(time.Millisecond))
 			}
@@ -146,16 +146,15 @@ func NewLightStreamChartTick(epic string, fields []string, values []string) (*Li
 
 	bytesToUnmarshal, err := json.Marshal(sliceToUnmarshal)
 	if err != nil {
-		return nil, err
+		return tick, err
 	}
 
 	//fmt.Println(sliceToUnmarshal, string(bytesToUnmarshal))
 
-	tick := LightStreamChartTick{}
 	err = json.Unmarshal(bytesToUnmarshal, &tick)
 	if err != nil {
-		return nil, err
+		return tick, err
 	}
 
-	return &tick, nil
+	return tick, nil
 }
