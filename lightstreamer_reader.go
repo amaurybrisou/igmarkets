@@ -23,7 +23,6 @@ func readLightStreamSubscription(epics, fields []string, tickReceiver chan Light
 
 	for {
 		read, err := resp.Body.Read(respBuf)
-		fmt.Println(read, string(respBuf), err)
 
 		if read > 0 {
 			mess := string(respBuf[0:read])
