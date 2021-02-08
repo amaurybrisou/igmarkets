@@ -25,6 +25,7 @@ func readLightStreamSubscription(epics, fields []string, tickReceiver chan Light
 		read, err := resp.Body.Read(respBuf)
 		if err != nil {
 			if err == io.EOF {
+				fmt.Printf("reading lightstreamer subscription failed: %v", err)
 				break
 			}
 			fmt.Printf("reading lightstreamer subscription failed: %v", err)
@@ -41,7 +42,7 @@ func readLightStreamSubscription(epics, fields []string, tickReceiver chan Light
 		}
 
 		if len(priceParts) != len(fields)+1 {
-			//fmt.Printf("Malformed price message: %q\n", priceMsg)
+			fmt.Printf("Malformed price message: %q\n", priceMsg)
 			continue
 		}
 
