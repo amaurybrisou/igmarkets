@@ -10,6 +10,7 @@ import (
 )
 
 type LightStreamChartTick struct {
+	EPIC             string     `json:"EPIC,omitempty"`
 	LTV              float64    `json:"LTV,omitempty"`              //Last traded volume
 	TTV              float64    `json:"TTV,omitempty"`              //Incremental volume
 	UTM              *time.Time `json:"UTM,omitempty"`              //Update time (as milliseconds from the Epoch)
@@ -103,13 +104,13 @@ func (dest *LightStreamChartTick) Merge(src *LightStreamChartTick) {
 	}
 }
 
-func NewLightStreamChartTick(fields []string, values []string) (*LightStreamChartTick, error) {
+func NewLightStreamChartTick(epic string, fields []string, values []string) (*LightStreamChartTick, error) {
 	if len(fields) != len(values) {
 		return nil, fmt.Errorf("not enough values for fields number")
 	}
 	reflectType := reflect.TypeOf(LightStreamChartTick{})
 
-	sliceToUnmarshal := make(map[string]interface{}, len(fields))
+	sliceToUnmarshal := make(map[string]interface{}, len(fields)+1)
 	for i := 0; i < len(fields); i++ {
 		value := strings.ReplaceAll(values[i], "\r\n", "")
 		if value == "" {
@@ -139,8 +140,9 @@ func NewLightStreamChartTick(fields []string, values []string) (*LightStreamChar
 				sliceToUnmarshal[fields[i]] = time.Unix(0, v*int64(time.Millisecond))
 			}
 		}
-
 	}
+
+	sliceToUnmarshal["EPIC"] = epic
 
 	bytesToUnmarshal, err := json.Marshal(sliceToUnmarshal)
 	if err != nil {

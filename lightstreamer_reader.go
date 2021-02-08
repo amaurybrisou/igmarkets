@@ -45,8 +45,13 @@ func readLightStreamSubscription(epics, fields []string, tickReceiver chan Light
 			continue
 		}
 
-		epic := priceParts[0]
-		tick, err := NewLightStreamChartTick(fields, priceParts[1:])
+		epic, ok := epicIndex[priceParts[0]]
+		if !ok {
+			fmt.Errorf("epic not subscribed")
+			break
+		}
+
+		tick, err := NewLightStreamChartTick(epic, fields, priceParts[1:])
 
 		if lastTicks[epic] != nil {
 			tick.Merge(lastTicks[epic])
