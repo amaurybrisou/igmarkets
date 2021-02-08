@@ -113,7 +113,7 @@ func NewLightStreamChartTick(epic string, fields []string, values []string) (tic
 	sliceToUnmarshal := make(map[string]interface{}, len(fields)+1)
 	for i := 0; i < len(fields); i++ {
 		value := strings.ReplaceAll(values[i], "\r\n", "")
-		if value == "" {
+		if value == "" || value == "$" || value == "#" {
 			continue
 		}
 
