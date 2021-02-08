@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -430,9 +429,9 @@ type IGMarkets struct {
 }
 
 // New - Create new instance of igmarkets
-func New(apiURL, apiKey, accountID, identifier, password string, httpTimeout time.Duration) *IGMarkets {
+func New(apiURL, apiKey, accountID, identifier, password string, httpTimeout time.Duration) (*IGMarkets, error) {
 	if apiURL != DemoAPIURL && apiURL != LiveAPIURL {
-		log.Panic("Invalid endpoint URL", apiURL)
+		return nil, fmt.Errorf("invalid enpoint url %s", apiURL)
 	}
 
 	httpClient := &http.Client{
@@ -449,7 +448,7 @@ func New(apiURL, apiKey, accountID, identifier, password string, httpTimeout tim
 		Identifier: identifier,
 		Password:   password,
 		httpClient: httpClient,
-	}
+	}, nil
 }
 
 // RefreshToken - Get new OAuthToken from API and set it to IGMarkets object

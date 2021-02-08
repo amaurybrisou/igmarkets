@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/sklinkert/igmarkets"
 	"os"
 	"time"
+
+	"github.com/amaurybrisou/igmarkets"
 )
 
 func checkErr(err error) {
@@ -20,7 +21,7 @@ func main() {
 	igIdent := ""
 	igPassword := ""
 
-	ig := igmarkets.New(igmarkets.DemoAPIURL, apiKey, accountID, igIdent, igPassword, time.Duration(5*time.Second))
+	ig, _ := igmarkets.New(igmarkets.DemoAPIURL, apiKey, accountID, igIdent, igPassword, time.Duration(5*time.Second))
 	err := ig.Login()
 	checkErr(err)
 
