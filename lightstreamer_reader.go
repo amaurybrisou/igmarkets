@@ -23,9 +23,19 @@ func readLightStreamSubscription(epics, fields []string, tickReceiver chan Light
 
 	for {
 		read, err := resp.Body.Read(respBuf)
+		fmt.Println(read, string(respBuf), err)
+
+		if read > 0 {
+			mess := string(respBuf[0:read])
+			if mess == "LOOP\r\n\r\n" {
+				fmt.Printf("Server Closed Stream\n")
+				break
+			}
+		} // Sever ends streaming
+
 		if err != nil {
 			if err == io.EOF {
-				fmt.Printf("reading lightstreamer subscription failed: %v", err)
+				fmt.Printf("Server Closed Stream\n")
 				break
 			}
 			fmt.Printf("reading lightstreamer subscription failed: %v", err)
@@ -35,14 +45,7 @@ func readLightStreamSubscription(epics, fields []string, tickReceiver chan Light
 		priceMsg := string(respBuf[0:read])
 		priceParts := strings.Split(priceMsg, "|")
 
-		// Sever ends streaming
-		if priceMsg == "LOOP\r\n\r\n" {
-			fmt.Printf("ending\n")
-			break
-		}
-
 		if len(priceParts) != len(fields)+1 {
-			fmt.Printf("Malformed price message: %q\n", priceMsg)
 			continue
 		}
 
