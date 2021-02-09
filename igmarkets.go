@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -200,9 +201,24 @@ type DealReference struct {
 	DealReference string `json:"dealReference"`
 }
 
+type Time time.Time
+
+func (me *Time) UnmarshalJSON(data []byte) error {
+	dateAsStr := strings.ReplaceAll(string(data), "\"", "")
+	expectedDate, err := time.ParseInLocation("2006-02-01T15:04:05", dateAsStr, time.UTC)
+	if err != nil {
+		return err
+	}
+
+	*me = Time(expectedDate)
+
+	return nil
+}
+
 // OTCDealConfirmation - Deal confirmation
 type OTCDealConfirmation struct {
 	Epic                  string         `json:"epic"`
+	Date                  Time           `json:"date"`
 	AffectedDeals         []AffectedDeal `json:"affectedDeals"`
 	Level                 float64        `json:"level"`
 	ForceOpen             bool           `json:"forceOpen"`
