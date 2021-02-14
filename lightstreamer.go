@@ -68,7 +68,7 @@ func (ig *IGMarkets) OpenLightStreamerSubscription(epics, fields []string, subTy
 	ig.SessionVersion2 = *sessionVersion2
 
 	tr := &http.Transport{
-		MaxIdleConns:       1,
+		MaxIdleConns:       5,
 		IdleConnTimeout:    30 * time.Second,
 		DisableCompression: true,
 	}
@@ -123,13 +123,15 @@ func (ig *IGMarkets) OpenLightStreamerSubscription(epics, fields []string, subTy
 	}
 
 	// Binding to subscription
-	body = []byte("LS_session=" + sessionID + "&LS_polling=false&LS_polling_millis=0&LS_idle_millis=0")
+	body = []byte("LS_session=" + sessionID + "&LS_polling=false")
 	bodyBuf = bytes.NewBuffer(body)
 	url = fmt.Sprintf("%s/lightstreamer/bind_session.txt", sessionVersion2.LightstreamerEndpoint)
 	resp, err = c.Post(url, contentType, bodyBuf)
 	if err != nil {
 		return LightStreamErrorHandler(resp, err)
 	}
+
 	go readLightStreamSubscription(epics, fields, tickReceiver, resp)
+
 	return nil
 }

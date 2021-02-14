@@ -24,6 +24,7 @@ func readLightStreamSubscription(epics, fields []string, tickReceiver chan Light
 	for {
 		read, err := resp.Body.Read(respBuf)
 
+		// fmt.Println(string(respBuf[0:read]), err)
 		if read > 0 {
 			mess := string(respBuf[0:read])
 			if mess == "LOOP\r\n\r\n" {
@@ -50,8 +51,7 @@ func readLightStreamSubscription(epics, fields []string, tickReceiver chan Light
 
 		epic, ok := epicIndex[priceParts[0]]
 		if !ok {
-			fmt.Errorf("epic not subscribed")
-			break
+			continue
 		}
 
 		tick, err := NewLightStreamChartTick(epic, fields, priceParts[1:])
