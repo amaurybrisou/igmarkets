@@ -444,6 +444,7 @@ type IGMarkets struct {
 	SessionID                   string
 	httpClient                  *http.Client
 	connected, AutoRefreshToken bool
+	logout                      chan bool
 	sync.RWMutex
 }
 
@@ -468,6 +469,7 @@ func New(apiURL, apiKey, accountID, identifier, password string, autoRefreshToke
 		Password:         password,
 		AutoRefreshToken: autoRefreshToken,
 		httpClient:       httpClient,
+		logout:           make(chan bool),
 	}, nil
 }
 
@@ -576,6 +578,7 @@ func (ig *IGMarkets) Login() error {
 
 		t = time.NewTicker(time.Duration(d) * time.Second)
 		<-t.C
+
 		ig.Lock()
 		ig.connected = false
 		ig.Unlock()
@@ -607,7 +610,12 @@ func (ig *IGMarkets) Login() error {
 				}
 
 				t.Reset(time.Duration(d) * time.Second)
-
+				select {
+				case <-ig.logout:
+					t.Stop()
+					return
+				default:
+				}
 			}
 		}()
 	}
@@ -627,6 +635,8 @@ func (ig *IGMarkets) Logout() error {
 	}
 
 	log.Debug("ig logged out")
+
+	ig.logout <- true
 
 	ig.Lock()
 	ig.connected = false
