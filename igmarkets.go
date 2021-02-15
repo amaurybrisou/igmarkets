@@ -615,6 +615,26 @@ func (ig *IGMarkets) Login() error {
 	return nil
 }
 
+func (ig *IGMarkets) IsConnected() bool {
+	return ig.connected
+}
+
+func (ig *IGMarkets) Logout() error {
+	bodyReq := new(bytes.Buffer)
+	_, err := http.NewRequest("DELETE", fmt.Sprintf("%s/%s", ig.APIURL, "gateway/deal/session"), bodyReq)
+	if err != nil {
+		return fmt.Errorf("igmarkets: unable to send HTTP request: %v", err)
+	}
+
+	log.Debug("ig logged out")
+
+	ig.Lock()
+	ig.connected = false
+	ig.Unlock()
+
+	return nil
+}
+
 // GetPrice - Return the minute prices for the last 10 minutes for the given epic.
 func (ig *IGMarkets) GetPrice(epic string) (*PriceResponse, error) {
 	return ig.GetPriceHistory(epic, ResolutionSecond, 1, time.Time{}, time.Time{})
