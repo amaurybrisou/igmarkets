@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // OTCPositionCloseRequest - request struct for closing positions
@@ -432,20 +434,21 @@ const (
 
 // IGMarkets - Object with all information we need to access IG REST API
 type IGMarkets struct {
-	APIURL          string
-	APIKey          string
-	AccountID       string
-	Identifier      string
-	Password        string
-	OAuthToken      OAuthToken
-	SessionVersion2 SessionVersion2
-	SessionID       string
-	httpClient      *http.Client
+	APIURL                      string
+	APIKey                      string
+	AccountID                   string
+	Identifier                  string
+	Password                    string
+	OAuthToken                  OAuthToken
+	SessionVersion2             SessionVersion2
+	SessionID                   string
+	httpClient                  *http.Client
+	connected, AutoRefreshToken bool
 	sync.RWMutex
 }
 
 // New - Create new instance of igmarkets
-func New(apiURL, apiKey, accountID, identifier, password string, httpTimeout time.Duration) (*IGMarkets, error) {
+func New(apiURL, apiKey, accountID, identifier, password string, autoRefreshToken bool, httpTimeout time.Duration) (*IGMarkets, error) {
 	if apiURL != DemoAPIURL && apiURL != LiveAPIURL {
 		return nil, fmt.Errorf("invalid enpoint url %s", apiURL)
 	}
@@ -458,17 +461,24 @@ func New(apiURL, apiKey, accountID, identifier, password string, httpTimeout tim
 	}
 
 	return &IGMarkets{
-		APIURL:     apiURL,
-		APIKey:     apiKey,
-		AccountID:  accountID,
-		Identifier: identifier,
-		Password:   password,
-		httpClient: httpClient,
+		APIURL:           apiURL,
+		APIKey:           apiKey,
+		AccountID:        accountID,
+		Identifier:       identifier,
+		Password:         password,
+		AutoRefreshToken: autoRefreshToken,
+		httpClient:       httpClient,
 	}, nil
 }
 
 // RefreshToken - Get new OAuthToken from API and set it to IGMarkets object
 func (ig *IGMarkets) RefreshToken() error {
+	if !ig.connected {
+		return ig.Login()
+	}
+
+	log.Debug("lightstreamer : refreshing ig token")
+
 	bodyReq := new(bytes.Buffer)
 
 	var authReq = refreshTokenRequest{
@@ -506,13 +516,20 @@ func (ig *IGMarkets) RefreshToken() error {
 
 	ig.Lock()
 	ig.OAuthToken = *oauthToken
+	ig.connected = true
 	ig.Unlock()
+
+	log.Debug("lightstreamer : token refreshed")
 
 	return nil
 }
 
 // Login - Get new OAuthToken from API and set it to IGMarkets object
 func (ig *IGMarkets) Login() error {
+	if ig.connected {
+		return ig.RefreshToken()
+	}
+
 	bodyReq := new(bytes.Buffer)
 
 	var authReq = authRequest{
@@ -549,9 +566,51 @@ func (ig *IGMarkets) Login() error {
 		return fmt.Errorf("igmarkets: token expiry is too short for periodically renewals")
 	}
 
+	var t *time.Ticker
+
+	go func() {
+		d, err := strconv.ParseInt(session.OAuthToken.ExpiresIn, 10, 32)
+		if err != nil {
+			d = 60
+		}
+
+		t = time.NewTicker(time.Duration(d) * time.Second)
+		<-t.C
+		ig.Lock()
+		ig.connected = false
+		ig.Unlock()
+	}()
+
 	ig.Lock()
 	ig.OAuthToken = session.OAuthToken
+	ig.connected = true
 	ig.Unlock()
+
+	log.Debug("ig connected")
+
+	if ig.AutoRefreshToken {
+		log.Debug("lightstreamer : autorefresh token enabled")
+		go func() {
+			for ig.connected {
+				d, err := strconv.ParseInt(session.OAuthToken.ExpiresIn, 10, 32)
+				if err != nil {
+					d = 60
+				}
+
+				time.Sleep(time.Duration(d-10) * time.Second)
+				err = ig.RefreshToken()
+				if err != nil {
+					ig.Lock()
+					ig.connected = false
+					ig.Unlock()
+					return
+				}
+
+				t.Reset(time.Duration(d) * time.Second)
+
+			}
+		}()
+	}
 
 	return nil
 }

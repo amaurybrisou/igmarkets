@@ -6,7 +6,15 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+)
+
+const (
+	contentLength = "100000000"
+	contentType   = "application/x-www-form-urlencoded"
 )
 
 type LightStreamerTick struct {
@@ -53,17 +61,19 @@ func (ig *IGMarkets) CloseLightStreamerSubscription() error {
 
 }
 
-// GetOTCWorkingOrders - Get all working orders
-// epic: e.g. CS.D.BITCOIN.CFD.IP
-// tickReceiver: receives all ticks from lightstreamer API
-func (ig *IGMarkets) OpenLightStreamerSubscription(epics, fields []string, subType, tick, mode string, tickReceiver chan LightStreamChartTick) error {
-	const contentType = "application/x-www-form-urlencoded"
+func (ig *IGMarkets) connectLightStreamer(epics, fields []string, subType, interval, mode string) (*http.Response, error) {
+
+	if err := ig.Login(); err != nil {
+		return nil, err
+	}
 
 	// Obtain CST and XST tokens first
 	sessionVersion2, err := ig.LoginVersion2()
 	if err != nil {
-		return fmt.Errorf("ig.LoginVersion2() failed: %v", err)
+		return nil, fmt.Errorf("ig.LoginVersion2() failed: %v", err)
 	}
+
+	log.Debug("lightstreamer : connected")
 
 	ig.SessionVersion2 = *sessionVersion2
 
@@ -74,20 +84,25 @@ func (ig *IGMarkets) OpenLightStreamerSubscription(epics, fields []string, subTy
 	}
 	c := &http.Client{Transport: tr}
 
-	// Create Lightstreamer Session
-	body := []byte("LS_polling=true&LS_polling_millis=0&LS_idle_millis=0&LS_op2=create&LS_password=CST-" +
+	bodyAsStr := "LS_polling=true&LS_polling_millis=0&LS_idle_millis=0" +
+		"&LS_op2=create&LS_password=CST-" +
 		sessionVersion2.CSTToken + "|" + "XST-" + sessionVersion2.XSTToken + "&LS_user=" +
-		sessionVersion2.CurrentAccountId + "&LS_cid=mgQkwtwdysogQz2BJ4Ji kOj2Bg")
+		sessionVersion2.CurrentAccountId + "&LS_cid=mgQkwtwdysogQz2BJ4Ji kOj2Bg"
+
+	// Create Lightstreamer Session
+	body := []byte(bodyAsStr)
+
 	bodyBuf := bytes.NewBuffer(body)
 	url := fmt.Sprintf("%s/lightstreamer/create_session.txt", sessionVersion2.LightstreamerEndpoint)
 	resp, err := c.Post(url, contentType, bodyBuf)
 	if err != nil {
-		return LightStreamErrorHandler(resp, err)
+		return nil, LightStreamErrorHandler(resp, err)
 	}
 	respBody, _ := ioutil.ReadAll(resp.Body)
+
 	sessionMsg := string(respBody[:])
 	if !strings.HasPrefix(sessionMsg, "OK") {
-		return fmt.Errorf("unexpected response from lightstreamer session endpoint %q: %q", url, sessionMsg)
+		return nil, fmt.Errorf("unexpected response from lightstreamer session endpoint %q: %q", url, sessionMsg)
 	}
 	sessionParts := strings.Split(sessionMsg, "\r\n")
 	sessionID := sessionParts[1]
@@ -102,10 +117,12 @@ func (ig *IGMarkets) OpenLightStreamerSubscription(epics, fields []string, subTy
 		}
 	}
 
+	log.Debug("lightstreamer : session created")
+
 	// Adding subscription for epic
 	var epicList string
 	for i := range epics {
-		epicList = epicList + subType + ":" + epics[i] + ":" + tick + "+"
+		epicList = epicList + subType + ":" + epics[i] + ":" + interval + "+"
 	}
 
 	body = []byte("LS_session=" + sessionID +
@@ -115,23 +132,91 @@ func (ig *IGMarkets) OpenLightStreamerSubscription(epics, fields []string, subTy
 	url = fmt.Sprintf("%s/lightstreamer/control.txt", sessionVersion2.LightstreamerEndpoint)
 	resp, err = c.Post(url, contentType, bodyBuf)
 	if err != nil {
-		return LightStreamErrorHandler(resp, err)
+		return nil, LightStreamErrorHandler(resp, err)
 	}
 	body, _ = ioutil.ReadAll(resp.Body)
 	if !strings.HasPrefix(sessionMsg, "OK") {
-		return fmt.Errorf("unexpected control.txt response: %q", body)
+		return nil, fmt.Errorf("unexpected control.txt response: %q", body)
 	}
 
+	log.Debug("lightstreamer : subscription created")
+
 	// Binding to subscription
-	body = []byte("LS_session=" + sessionID + "&LS_polling=false")
+	body = []byte("LS_session=" + sessionID + "&LS_polling=false&LS_content_length=" + contentLength)
 	bodyBuf = bytes.NewBuffer(body)
 	url = fmt.Sprintf("%s/lightstreamer/bind_session.txt", sessionVersion2.LightstreamerEndpoint)
 	resp, err = c.Post(url, contentType, bodyBuf)
 	if err != nil {
-		return LightStreamErrorHandler(resp, err)
+		return nil, LightStreamErrorHandler(resp, err)
 	}
 
-	go readLightStreamSubscription(epics, fields, tickReceiver, resp)
+	log.Debug("lightstreamer : subscription bound")
 
-	return nil
+	return resp, nil
+}
+
+// GetOTCWorkingOrders - Get all working orders
+// epic: e.g. CS.D.BITCOIN.CFD.IP
+// tickReceiver: receives all ticks from lightstreamer API
+func (ig *IGMarkets) OpenLightStreamerSubscription(
+	epics,
+	fields []string,
+	subType,
+	interval,
+	mode string,
+	reconnectionTime int) (<-chan LightStreamChartTick, <-chan error, error) {
+
+	tickChan := make(chan LightStreamChartTick)
+	errChan := make(chan error)
+
+	go func() {
+
+		attempts := 1
+
+		for {
+
+			resp, err := ig.connectLightStreamer(epics, fields, subType, interval, mode)
+
+			if err != nil {
+				errChan <- err
+				continue
+			}
+
+			internalErrChan := make(chan error)
+			internalTickChan := make(chan LightStreamChartTick)
+
+			go readLightStreamSubscription(epics, fields, internalTickChan, resp.Body, internalErrChan)
+
+			var wg sync.WaitGroup
+			stop := make(chan bool)
+
+			wg.Add(1)
+
+			go func() {
+				for {
+					select {
+					case t := <-internalTickChan:
+						if t.UTM != nil {
+							tickChan <- t
+						}
+					case <-stop:
+						wg.Done()
+						return
+					}
+				}
+			}()
+
+			err = <-internalErrChan
+			stop <- true
+			wg.Wait()
+
+			log.WithError(err).Error("lightstreamer : ")
+			log.Printf("sleeping for %s", time.Second*time.Duration(reconnectionTime*attempts))
+			time.Sleep(time.Second * time.Duration(reconnectionTime*attempts))
+
+			attempts++
+		}
+	}()
+
+	return tickChan, errChan, nil
 }

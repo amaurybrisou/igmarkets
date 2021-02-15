@@ -7,13 +7,17 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
-func readLightStreamSubscription(epics, fields []string, tickReceiver chan LightStreamChartTick, resp *http.Response) {
+func readLightStreamSubscription(epics, fields []string, tickReceiver chan LightStreamChartTick, body io.ReadCloser, errChan chan error) {
 	var respBuf = make([]byte, 64)
 	var lastTicks = make(map[string]LightStreamChartTick, len(epics)) // epic -> tick
 
 	defer close(tickReceiver)
+	defer close(errChan)
+	defer body.Close()
 
 	// map table index -> epic name
 	var epicIndex = make(map[string]string, len(epics))
@@ -21,28 +25,35 @@ func readLightStreamSubscription(epics, fields []string, tickReceiver chan Light
 		epicIndex[fmt.Sprintf("1,%d", i+1)] = epic
 	}
 
-	for {
-		read, err := resp.Body.Read(respBuf)
+	log.Debug("lightstreamer : reading stream")
 
-		// fmt.Println(string(respBuf[0:read]), err)
+	for {
+		read, err := body.Read(respBuf)
+
+		log.Traceln(string(respBuf[0:read]), err)
+
 		if read > 0 {
-			mess := string(respBuf[0:read])
+			mess := string(respBuf[:read])
 			if mess == "LOOP\r\n\r\n" {
-				fmt.Printf("Server Closed Stream\n")
-				break
+				errChan <- fmt.Errorf("recv LOOP")
+				log.Printf("Server Closed Stream\n")
+
+				return
 			}
 		} // Sever ends streaming
 
 		if err != nil {
 			if err == io.EOF {
-				fmt.Printf("Server Closed Stream\n")
-				break
+				log.Printf("Server Closed Stream\n")
+				errChan <- fmt.Errorf("recv EOF")
+				return
 			}
-			fmt.Printf("reading lightstreamer subscription failed: %v", err)
-			break
+			errChan <- err
+			log.Printf("reading lightstreamer subscription failed: %v", err)
+			return
 		}
 
-		priceMsg := string(respBuf[0:read])
+		priceMsg := string(respBuf[:read])
 		priceParts := strings.Split(priceMsg, "|")
 
 		if len(priceParts) != len(fields)+1 {
@@ -59,7 +70,7 @@ func readLightStreamSubscription(epics, fields []string, tickReceiver chan Light
 		tick.Merge(lastTicks[epic])
 
 		if err != nil {
-			fmt.Printf("lighstream could not parse tick %v", err)
+			log.Printf("lighstream could not parse tick %v", err)
 			continue
 		}
 
