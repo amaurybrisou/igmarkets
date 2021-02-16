@@ -933,10 +933,16 @@ func (ig *IGMarkets) doRequestWithoutOAuth(req *http.Request, endpointVersion in
 
 func (ig *IGMarkets) doRequest(req *http.Request, endpointVersion int, igResponse interface{}) (interface{}, error) {
 
-	if err := ig.RefreshToken(); err != nil {
-		ig.Lock()
-		ig.connected = false
-		ig.Unlock()
+	if ig.connected {
+		if err := ig.RefreshToken(); err != nil {
+			ig.Lock()
+			ig.connected = false
+			ig.Unlock()
+			if err := ig.Login(); err != nil {
+				return nil, err
+			}
+		}
+	} else {
 		if err := ig.Login(); err != nil {
 			return nil, err
 		}
