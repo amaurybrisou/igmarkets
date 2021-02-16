@@ -479,7 +479,7 @@ func (ig *IGMarkets) RefreshToken() error {
 		return ig.Login()
 	}
 
-	log.Debug("lightstreamer : refreshing ig token")
+	log.Debug("igmarkets: refreshing ig token")
 
 	bodyReq := new(bytes.Buffer)
 
@@ -496,7 +496,7 @@ func (ig *IGMarkets) RefreshToken() error {
 		return fmt.Errorf("igmarkets: unable to send HTTP request: %v", err)
 	}
 
-	igResponseInterface, err := ig.doRequest(req, 1, OAuthToken{})
+	igResponseInterface, _, err := ig.doRequestWithResponseHeaders(req, 1, OAuthToken{}, true)
 	if err != nil {
 		return err
 	}
@@ -521,7 +521,7 @@ func (ig *IGMarkets) RefreshToken() error {
 	ig.connected = true
 	ig.Unlock()
 
-	log.Debug("lightstreamer : token refreshed")
+	log.Debug("igmarkets: token refreshed")
 
 	return nil
 }
@@ -568,6 +568,13 @@ func (ig *IGMarkets) Login() error {
 		return fmt.Errorf("igmarkets: token expiry is too short for periodically renewals")
 	}
 
+	ig.Lock()
+	ig.OAuthToken = session.OAuthToken
+	ig.connected = true
+	ig.Unlock()
+
+	log.Debug("igmarkets: connected")
+
 	var t *time.Ticker
 
 	go func() {
@@ -582,17 +589,11 @@ func (ig *IGMarkets) Login() error {
 		ig.Lock()
 		ig.connected = false
 		ig.Unlock()
+
 	}()
 
-	ig.Lock()
-	ig.OAuthToken = session.OAuthToken
-	ig.connected = true
-	ig.Unlock()
-
-	log.Debug("ig connected")
-
 	if ig.AutoRefreshToken {
-		log.Debug("lightstreamer : autorefresh token enabled")
+		log.Debug("igmarkets: autorefresh token enabled")
 		go func() {
 			for ig.connected {
 				d, err := strconv.ParseInt(session.OAuthToken.ExpiresIn, 10, 32)
@@ -600,21 +601,21 @@ func (ig *IGMarkets) Login() error {
 					d = 60
 				}
 
-				time.Sleep(time.Duration(d-10) * time.Second)
-				err = ig.RefreshToken()
-				if err != nil {
-					ig.Lock()
-					ig.connected = false
-					ig.Unlock()
-					return
-				}
-
-				t.Reset(time.Duration(d) * time.Second)
 				select {
 				case <-ig.logout:
+					log.Debug("igmarkets: autorefresh token disabled")
 					t.Stop()
 					return
-				default:
+				case <-time.After(time.Duration(d-5) * time.Second):
+					err = ig.RefreshToken()
+					if err != nil {
+						ig.Lock()
+						ig.connected = false
+						ig.Unlock()
+						return
+					}
+
+					t.Reset(time.Duration(d) * time.Second)
 				}
 			}
 		}()
@@ -634,7 +635,7 @@ func (ig *IGMarkets) Logout() error {
 		return fmt.Errorf("igmarkets: unable to send HTTP request: %v", err)
 	}
 
-	log.Debug("ig logged out")
+	log.Debug("igmarkets: logged out")
 
 	ig.logout <- true
 
@@ -931,6 +932,16 @@ func (ig *IGMarkets) doRequestWithoutOAuth(req *http.Request, endpointVersion in
 }
 
 func (ig *IGMarkets) doRequest(req *http.Request, endpointVersion int, igResponse interface{}) (interface{}, error) {
+
+	if err := ig.RefreshToken(); err != nil {
+		ig.Lock()
+		ig.connected = false
+		ig.Unlock()
+		if err := ig.Login(); err != nil {
+			return nil, err
+		}
+	}
+
 	object, _, err := ig.doRequestWithResponseHeaders(req, endpointVersion, igResponse, true)
 	return object, err
 }
