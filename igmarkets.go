@@ -207,7 +207,7 @@ type Time time.Time
 
 func (me *Time) UnmarshalJSON(data []byte) error {
 	dateAsStr := strings.ReplaceAll(string(data), "\"", "")
-	expectedDate, err := time.ParseInLocation("2006-02-01T15:04:05", dateAsStr, time.UTC)
+	expectedDate, err := time.ParseInLocation("2006-01-02T15:04:05", dateAsStr, time.UTC)
 	if err != nil {
 		return err
 	}
