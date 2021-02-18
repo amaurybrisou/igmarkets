@@ -209,6 +209,7 @@ func (me *Time) UnmarshalJSON(data []byte) error {
 	dateAsStr := strings.ReplaceAll(string(data), "\"", "")
 	expectedDate, err := time.ParseInLocation("2006-01-02T15:04:05", dateAsStr, time.UTC)
 	if err != nil {
+		log.Error(err)
 		return err
 	}
 
@@ -629,8 +630,14 @@ func (ig *IGMarkets) IsConnected() bool {
 }
 
 func (ig *IGMarkets) Logout() error {
-	bodyReq := new(bytes.Buffer)
-	_, err := http.NewRequest("DELETE", fmt.Sprintf("%s/%s", ig.APIURL, "gateway/deal/session"), bodyReq)
+
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/%s", ig.APIURL, "gateway/deal/session"), nil)
+	if err != nil {
+		return fmt.Errorf("igmarkets: unable to send HTTP request: %v", err)
+	}
+
+	var r interface{}
+	_, err = ig.doRequest(req, 1, r)
 	if err != nil {
 		return fmt.Errorf("igmarkets: unable to send HTTP request: %v", err)
 	}
@@ -969,6 +976,12 @@ func (ig *IGMarkets) doRequestWithResponseHeaders(req *http.Request, endpointVer
 	if err != nil {
 		return igResponse, nil, fmt.Errorf("igmarkets: unable to get markets data: %v", err)
 	}
+
+	//handle logout 204
+	if req.Method == http.MethodDelete && resp.StatusCode == http.StatusNoContent {
+		return nil, nil, nil
+	}
+
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			fmt.Printf("igmarkets.doRequest:  resp.Body.Close() failed: %v", err)

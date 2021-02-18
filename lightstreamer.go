@@ -2,6 +2,7 @@ package igmarkets
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -27,18 +28,39 @@ type LightStreamerTick struct {
 	LastTradedVolume float64
 }
 
+type LightStreamOptions struct {
+	Epics, Fields           []string
+	SubType, Interval, Mode string
+	ReconnectionTime        int
+}
+
+func (ig *IGMarkets) LogoutLightStreamer() error {
+	err := ig.CloseLightStreamerSubscription()
+	if err != nil {
+		return err
+	}
+
+	err = ig.Logout()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (ig *IGMarkets) CloseLightStreamerSubscription() error {
 
 	const contentType = "application/x-www-form-urlencoded"
 
 	tr := &http.Transport{
-		MaxIdleConns:       1,
-		IdleConnTimeout:    30 * time.Second,
-		DisableCompression: true,
+		MaxIdleConns:          1,
+		IdleConnTimeout:       30 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		DisableCompression:    true,
 	}
-	c := &http.Client{Transport: tr}
+	c := &http.Client{Transport: tr, Timeout: 30 * time.Second}
 
-	body := []byte(fmt.Sprintf("LS_session=%s&LS_op=destroy", strings.Trim(ig.SessionID, " ")))
+	body := []byte(fmt.Sprintf("LS_session=%s&LS_op=destroy", ig.SessionID))
 	url := fmt.Sprintf("%s/lightstreamer/control.txt", ig.SessionVersion2.LightstreamerEndpoint)
 	resp, err := c.Post(url, contentType, bytes.NewBuffer(body))
 	if err != nil {
@@ -57,12 +79,13 @@ func (ig *IGMarkets) CloseLightStreamerSubscription() error {
 		return fmt.Errorf("unexpected response from lightstreamer session endpoint %q: %q", url, string(sessionMsg))
 	}
 
+	log.Debug("lightstreamer: subscription closed")
+
 	return nil
 
 }
 
-func (ig *IGMarkets) connectLightStreamer(epics, fields []string, subType, interval, mode string) (*http.Response, error) {
-
+func (ig *IGMarkets) connectLightStreamer(options LightStreamOptions) (*http.Response, error) {
 	if err := ig.Login(); err != nil {
 		return nil, err
 	}
@@ -121,13 +144,13 @@ func (ig *IGMarkets) connectLightStreamer(epics, fields []string, subType, inter
 
 	// Adding subscription for epic
 	var epicList string
-	for i := range epics {
-		epicList = epicList + subType + ":" + epics[i] + ":" + interval + "+"
+	for i := range options.Epics {
+		epicList = epicList + options.SubType + ":" + options.Epics[i] + ":" + options.Interval + "+"
 	}
 
 	body = []byte("LS_session=" + sessionID +
 		"&LS_polling=true&LS_polling_millis=0&LS_idle_millis=0&LS_op=add&LS_Table=1&LS_id=" +
-		epicList + "&LS_schema=" + strings.Join(fields[:], "+") + "&LS_mode=" + mode)
+		epicList + "&LS_schema=" + strings.Join(options.Fields[:], "+") + "&LS_mode=" + options.Mode)
 	bodyBuf = bytes.NewBuffer(body)
 	url = fmt.Sprintf("%s/lightstreamer/control.txt", sessionVersion2.LightstreamerEndpoint)
 	resp, err = c.Post(url, contentType, bodyBuf)
@@ -159,23 +182,21 @@ func (ig *IGMarkets) connectLightStreamer(epics, fields []string, subType, inter
 // epic: e.g. CS.D.BITCOIN.CFD.IP
 // tickReceiver: receives all ticks from lightstreamer API
 func (ig *IGMarkets) OpenLightStreamerSubscription(
-	epics,
-	fields []string,
-	subType,
-	interval,
-	mode string,
-	reconnectionTime int) (<-chan LightStreamChartTick, <-chan error, error) {
+	ctx context.Context,
+	o LightStreamOptions) (<-chan LightStreamChartTick, <-chan error, error) {
 
 	tickChan := make(chan LightStreamChartTick)
 	errChan := make(chan error)
 
 	go func() {
-
 		attempts := 1
+
+		defer close(tickChan)
+		defer close(errChan)
 
 		for {
 
-			resp, err := ig.connectLightStreamer(epics, fields, subType, interval, mode)
+			resp, err := ig.connectLightStreamer(o)
 
 			if err != nil {
 				errChan <- err
@@ -185,7 +206,7 @@ func (ig *IGMarkets) OpenLightStreamerSubscription(
 			internalErrChan := make(chan error)
 			internalTickChan := make(chan LightStreamChartTick)
 
-			go readLightStreamSubscription(epics, fields, internalTickChan, resp.Body, internalErrChan)
+			go readLightStreamSubscription(o.Epics, o.Fields, internalTickChan, resp.Body, internalErrChan)
 
 			var wg sync.WaitGroup
 			stop := make(chan bool)
@@ -193,6 +214,8 @@ func (ig *IGMarkets) OpenLightStreamerSubscription(
 			wg.Add(1)
 
 			go func() {
+				defer wg.Done()
+
 				for {
 					select {
 					case t := <-internalTickChan:
@@ -200,21 +223,41 @@ func (ig *IGMarkets) OpenLightStreamerSubscription(
 							tickChan <- t
 						}
 					case <-stop:
-						wg.Done()
+						log.Debug("lightstreamer: stopping stream")
+						return
+					case <-ctx.Done():
+						log.Debug("lightstreamer: stopping stream")
 						return
 					}
 				}
 			}()
 
-			err = <-internalErrChan
-			stop <- true
-			wg.Wait()
+			select {
+			case err := <-internalErrChan:
+				log.WithError(err).Error("lightstreamer : ")
 
-			log.WithError(err).Error("lightstreamer : ")
-			log.Printf("sleeping for %s", time.Second*time.Duration(reconnectionTime*attempts))
-			time.Sleep(time.Second * time.Duration(reconnectionTime*attempts))
+				stop <- true
 
-			attempts++
+				err = ig.LogoutLightStreamer()
+				if err != nil {
+					log.WithError(err).Error("lightstreamer : ")
+				}
+
+				wg.Wait()
+
+				log.Printf("sleeping for %s", time.Second*time.Duration(o.ReconnectionTime*attempts))
+				time.Sleep(time.Second * time.Duration(o.ReconnectionTime*attempts))
+
+			case <-ctx.Done():
+				err := ig.LogoutLightStreamer()
+				if err != nil {
+					log.WithError(err).Error("lightstreamer : ")
+				}
+
+				wg.Wait()
+				log.Debug("lightstreamer: stopping stream restarter")
+				return
+			}
 		}
 	}()
 

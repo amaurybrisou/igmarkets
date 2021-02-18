@@ -36,7 +36,7 @@ func readLightStreamSubscription(epics, fields []string, tickReceiver chan Light
 			mess := string(respBuf[:read])
 			if mess == "LOOP\r\n\r\n" {
 				errChan <- fmt.Errorf("recv LOOP")
-				log.Printf("Server Closed Stream\n")
+				log.Debug("Server Closed Stream\n")
 
 				return
 			}
@@ -44,12 +44,12 @@ func readLightStreamSubscription(epics, fields []string, tickReceiver chan Light
 
 		if err != nil {
 			if err == io.EOF {
-				log.Printf("Server Closed Stream\n")
+				log.Debug("Server Closed Stream\n")
 				errChan <- fmt.Errorf("recv EOF")
 				return
 			}
 			errChan <- err
-			log.Printf("reading lightstreamer subscription failed: %v", err)
+			log.Errorf("reading lightstreamer subscription failed: %v", err)
 			return
 		}
 
@@ -70,7 +70,7 @@ func readLightStreamSubscription(epics, fields []string, tickReceiver chan Light
 		tick.Merge(lastTicks[epic])
 
 		if err != nil {
-			log.Printf("lighstream could not parse tick %v", err)
+			log.Errorf("lighstream could not parse tick %v", err)
 			continue
 		}
 
