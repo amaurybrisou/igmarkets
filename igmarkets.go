@@ -401,6 +401,29 @@ type ClientSentimentResponse struct {
 	ShortPositionPercentage float64 `json:"shortPositionPercentage"`
 }
 
+type AccountBalance struct {
+	Available  float64 `json:"available"`
+	Balance    float64 `json:"balance"`
+	Deposit    float64 `json:"deposit"`
+	ProfitLoss float64 `json:"profitLoss"`
+}
+
+type Account struct {
+	AccountID       string `json:"accountId"`
+	AccountName     string `json:"accountName"`
+	AccountAlias    string `json:"accountAlias"`
+	AccountType     string `json:"accountType"`
+	Balance         AccountBalance
+	Currency        string `json:"currency"`
+	CanTransferFrom bool   `json:"canTransferFrom"`
+	CanTranferTo    bool   `json:"canTranferTo"`
+	Prefered        bool   `json:"prefered"`
+	Status          string `json:"status"`
+}
+type AccountResponse struct {
+	Accounts []Account `json:"accounts"`
+}
+
 const (
 	// ResolutionSecond - 1 second price snapshot
 	ResolutionSecond = "SECOND"
@@ -651,6 +674,25 @@ func (ig *IGMarkets) Logout() error {
 	ig.Unlock()
 
 	return nil
+}
+
+// GetAccounts - Returns the accounts details
+func (ig *IGMarkets) GetAccounts() (*AccountResponse, error) {
+	bodyReq := new(bytes.Buffer)
+
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/gateway/deal/accounts",
+		ig.APIURL), bodyReq)
+	if err != nil {
+		return nil, fmt.Errorf("igmarkets: unable to get accounts: %v", err)
+	}
+
+	igResponseInterface, err := ig.doRequest(req, 1, AccountResponse{})
+	if err != nil {
+		return nil, err
+	}
+	igResponse, _ := igResponseInterface.(*AccountResponse)
+
+	return igResponse, err
 }
 
 // GetPrice - Return the minute prices for the last 10 minutes for the given epic.
