@@ -29,9 +29,9 @@ type LightStreamerTick struct {
 }
 
 type LightStreamOptions struct {
-	Epics, Fields           []string
-	SubType, Interval, Mode string
-	ReconnectionTime        int
+	Epics, Fields                     []string
+	SubType, Interval, Mode           string
+	ReconnectionTime, MaxReconnection int
 }
 
 func (ig *IGMarkets) LogoutLightStreamer() error {
@@ -124,6 +124,7 @@ func (ig *IGMarkets) connectLightStreamer(options LightStreamOptions) (*http.Res
 	respBody, _ := ioutil.ReadAll(resp.Body)
 
 	sessionMsg := string(respBody[:])
+
 	if !strings.HasPrefix(sessionMsg, "OK") {
 		return nil, fmt.Errorf("unexpected response from lightstreamer session endpoint %q: %q", url, sessionMsg)
 	}
@@ -154,11 +155,13 @@ func (ig *IGMarkets) connectLightStreamer(options LightStreamOptions) (*http.Res
 	bodyBuf = bytes.NewBuffer(body)
 	url = fmt.Sprintf("%s/lightstreamer/control.txt", sessionVersion2.LightstreamerEndpoint)
 	resp, err = c.Post(url, contentType, bodyBuf)
+
 	if err != nil {
 		return nil, LightStreamErrorHandler(resp, err)
 	}
+
 	body, _ = ioutil.ReadAll(resp.Body)
-	if !strings.HasPrefix(sessionMsg, "OK") {
+	if !strings.HasPrefix(string(body), "OK") {
 		return nil, fmt.Errorf("unexpected control.txt response: %q", body)
 	}
 
@@ -194,12 +197,14 @@ func (ig *IGMarkets) OpenLightStreamerSubscription(
 		defer close(tickChan)
 		defer close(errChan)
 
-		for {
+		for attempts < o.MaxReconnection {
 
 			resp, err := ig.connectLightStreamer(o)
 
 			if err != nil {
 				errChan <- err
+				attempts++
+				time.Sleep(time.Duration(attempts) * time.Duration(o.ReconnectionTime) * time.Second)
 				continue
 			}
 
@@ -258,6 +263,11 @@ func (ig *IGMarkets) OpenLightStreamerSubscription(
 				log.Debug("lightstreamer: stopping stream restarter")
 				return
 			}
+		}
+		log.Error("lightsreamer : stopping...")
+		err := ig.LogoutLightStreamer()
+		if err != nil {
+			log.WithError(err).Error("lightstreamer : ")
 		}
 	}()
 

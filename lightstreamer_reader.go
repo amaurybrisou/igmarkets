@@ -25,7 +25,7 @@ func readLightStreamSubscription(epics, fields []string, tickReceiver chan Light
 		epicIndex[fmt.Sprintf("1,%d", i+1)] = epic
 	}
 
-	log.Debug("lightstreamer : reading stream")
+	log.Debugf("lightstreamer : reading stream %v with fields %v", epics, fields)
 
 	for {
 		read, err := body.Read(respBuf)
